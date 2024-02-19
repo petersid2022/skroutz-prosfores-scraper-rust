@@ -12,8 +12,11 @@ use tabled::{
 
 #[derive(Debug, Tabled)]
 struct Function {
+    #[tabled(rename = " Name ")]
     name: String,
+    #[tabled(rename = " Old price ")]
     old_price: String,
+    #[tabled(rename = " New price ")]
     new_price: String,
 }
 
@@ -28,11 +31,7 @@ impl Function {
 }
 
 fn help() {
-    println!(
-        "Usage:
--n, [Number]    Set the number of products to print (default: 5)
-"
-    );
+    println!("Usage: -n [number]: Set the number of products to print (default: 5)");
 }
 
 #[tokio::main]
@@ -45,18 +44,35 @@ async fn main() {
     }
 
     if args.len() == 2 {
-        match args[1].parse::<u32>() {
-            Ok(num) => number_of_items = num as usize,
-            _ => {
-                println!("Invalid argument.");
-                help();
-                exit(0);
+        help();
+        exit(0);
+    }
+
+    if args.len() == 3 {
+        if args[1] == "-n" {
+            match args[2].parse::<u32>() {
+                Ok(num) => {
+                    if num == 0 {
+                        help();
+                        exit(0);
+                    }
+                    number_of_items = num as usize;
+                }
+                _ => {
+                    println!("Invalid argument.");
+                    help();
+                    exit(0);
+                }
             }
+        } else {
+            help();
+            exit(0);
         }
     }
 
-    if args.len() > 2 {
+    if args.len() > 3 {
         help();
+        exit(0);
     }
 
     let client = reqwest::Client::new();
