@@ -1,7 +1,8 @@
-#[allow(unused_imports)]
-use anyhow::{Context, Error};
+use anyhow::Error;
+use rand::seq::SliceRandom;
 use reqwest::Client;
 use scraper::{Html, Selector};
+use std::{env, process::exit};
 use tabled::{
     settings::{
         object::Columns, style::Style, themes::ColumnNames, Alignment, Color, Modify, Width,
@@ -26,25 +27,56 @@ impl Function {
     }
 }
 
+fn help() {
+    println!(
+        "Usage:
+-n, [Number]    Set the number of products to print (default: 5)
+"
+    );
+}
+
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = env::args().collect();
+    let mut number_of_items: usize = 0;
+
+    if args.len() == 1 {
+        number_of_items = 5;
+    }
+
+    if args.len() == 2 {
+        match args[1].parse::<u32>() {
+            Ok(num) => number_of_items = num as usize,
+            _ => {
+                println!("Invalid argument.");
+                help();
+                exit(0);
+            }
+        }
+    }
+
+    if args.len() > 2 {
+        help();
+    }
+
     let client = reqwest::Client::new();
-    let data = scrape(&client).await;
+    let data = scrape(&client, number_of_items).await;
     let mut table = Table::new(data.unwrap());
 
     table
         .with(Style::modern())
+        .with(Modify::new(Columns::first()).with(Width::wrap(50).keep_words()))
         .with(
             ColumnNames::default()
                 .color(Color::BOLD | Color::BG_GREEN | Color::FG_BLACK)
                 .alignment(Alignment::center()),
-        )
-        .with(Modify::new(Columns::first()).with(Width::wrap(50).keep_words()));
+        );
 
     println!("{table}");
+    println!("(c) Peter Sideris 2024");
 }
 
-async fn scrape(client: &Client) -> Result<Vec<Function>, Error> {
+async fn scrape(client: &Client, number_of_items: usize) -> Result<Vec<Function>, Error> {
     let response = client
         .get("https://www.skroutz.gr/price-drops")
         .send()
@@ -91,6 +123,11 @@ async fn scrape(client: &Client) -> Result<Vec<Function>, Error> {
             }
         }
     }
+
+    data = data.drain(0..number_of_items).collect();
+
+    let mut rng = rand::thread_rng();
+    data.shuffle(&mut rng);
 
     Ok(data)
 }
