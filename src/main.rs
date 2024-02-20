@@ -2,7 +2,7 @@ use anyhow::Error;
 use rand::seq::SliceRandom;
 use reqwest::Client;
 use scraper::{Html, Selector};
-use std::{env, process::exit};
+use std::{env, process::exit, usize};
 use tabled::{
     settings::{
         object::Columns, style::Style, themes::ColumnNames, Alignment, Color, Modify, Width,
@@ -18,39 +18,46 @@ struct Function {
     old_price: String,
     #[tabled(rename = " New price ")]
     new_price: String,
+    #[tabled(rename = " % Discount ")]
+    discount: String,
+    #[tabled(rename = " Link ")]
+    link: String,
 }
 
 impl Function {
-    fn new(decl: &str, name: &str, ret_type: &str) -> Self {
+    fn new(decl: &str, name: &str, ret_type: &str, disc: &str, link: &str) -> Self {
         Self {
             name: decl.to_string(),
             old_price: name.to_string(),
             new_price: ret_type.to_string(),
+            discount: disc.to_string(),
+            link: link.to_string(),
         }
     }
 }
 
 fn help() {
-    println!("Usage: -n [number]: Set the number of products to print (default: 5)");
+    println!(
+        "Usage:
+        -n [number]:    Set the number of products to print (default: 5)
+        -p [number]:    Set the number of pages to scrape (default: 1)"
+    );
 }
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut number_of_items: usize = 0;
+    let mut number_of_items: usize = 5;
+    let mut number_of_pages: usize = 1;
 
-    if args.len() == 1 {
-        number_of_items = 5;
-    }
-
-    if args.len() == 2 {
+    if args.len() > 1 && args.len() != 3 {
         help();
         exit(0);
     }
 
     if args.len() == 3 {
-        if args[1] == "-n" {
-            match args[2].parse::<u32>() {
+        match args[1].as_str() {
+            "-n" => match args[2].parse::<u32>() {
                 Ok(num) => {
                     if num == 0 {
                         help();
@@ -63,20 +70,30 @@ async fn main() {
                     help();
                     exit(0);
                 }
+            },
+            "-p" => match args[2].parse::<u32>() {
+                Ok(f) => {
+                    if f == 0 {
+                        help();
+                        exit(0);
+                    }
+                    number_of_pages = f as usize;
+                }
+                _ => {
+                    println!("Invalid argument.");
+                    help();
+                    exit(0);
+                }
+            },
+            _ => {
+                help();
+                exit(0);
             }
-        } else {
-            help();
-            exit(0);
         }
     }
 
-    if args.len() > 3 {
-        help();
-        exit(0);
-    }
-
     let client = reqwest::Client::new();
-    let data = scrape(&client, number_of_items).await;
+    let data = scrape(&client, number_of_items, number_of_pages).await;
     let mut table = Table::new(data.unwrap());
 
     table
@@ -92,11 +109,38 @@ async fn main() {
     println!("(c) Peter Sideris 2024");
 }
 
-async fn scrape(client: &Client, number_of_items: usize) -> Result<Vec<Function>, Error> {
-    let response = client
-        .get("https://www.skroutz.gr/price-drops")
-        .send()
-        .await?;
+fn create_link(x: String, y: String) -> String {
+    let out = format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", x, y);
+    out
+}
+
+fn calculate_discount(original_price: &String, discounted_price: &String) -> Result<f32, Error> {
+    let original_price_str: String = original_price
+        .chars()
+        .filter(|c| char::is_numeric(*c) || *c == ',')
+        .collect();
+    let discounted_price_str: String = discounted_price
+        .chars()
+        .filter(|c| char::is_numeric(*c) || *c == ',')
+        .collect();
+
+    let original_price_int: f32 = original_price_str.replace(",", ".").parse()?;
+    let discounted_price_int: f32 = discounted_price_str.replace(",", ".").parse()?;
+
+    let discount = 100.0 * (original_price_int - discounted_price_int) / original_price_int;
+
+    Ok(discount)
+}
+
+async fn scrape(
+    client: &Client,
+    number_of_items: usize,
+    number_of_pages: usize,
+) -> Result<Vec<Function>, Error> {
+    let base_url = "https://www.skroutz.gr/price-drops?order_by=".to_string();
+    let url = format!("{}recommended&recent=1&page={}", base_url, number_of_pages);
+
+    let response = client.get(url).send().await?;
 
     let body = response.text().await?;
     let fragment = Html::parse_fragment(&body);
@@ -128,13 +172,23 @@ async fn scrape(client: &Client, number_of_items: usize) -> Result<Vec<Function>
                 .next()
                 .map(|a| a.value().attr("title").unwrap_or_default());
 
-            if let (Some(title), Some(original_price), Some(discounted_price)) =
-                (title, original_price, discounted_price)
+            let link = product_body
+                .select(&a_selector)
+                .next()
+                .map(|a| a.value().attr("href").unwrap_or_default());
+
+            if let (Some(title), Some(original_price), Some(discounted_price), Some(link)) =
+                (title, original_price, discounted_price, link)
             {
+                let url = format!("https://skroutz.gr{}", link);
+                let link = create_link(url, "link".to_string());
+                let discount = calculate_discount(&original_price, &discounted_price)?;
                 data.push(Function::new(
                     &title.trim().to_string(),
                     &original_price.trim().to_string(),
                     &discounted_price.trim().to_string(),
+                    &discount.to_string(),
+                    &link.trim().to_string(),
                 ));
             }
         }
