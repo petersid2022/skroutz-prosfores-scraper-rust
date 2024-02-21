@@ -2,6 +2,7 @@ use anyhow::Error;
 use rand::seq::SliceRandom;
 use reqwest::Client;
 use scraper::{Html, Selector};
+use std::time::Instant;
 use std::{env, process::exit, usize};
 use tabled::{
     settings::{
@@ -44,8 +45,9 @@ fn help() {
     );
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    let t1 = Instant::now();
     let args: Vec<String> = env::args().collect();
     let mut number_of_items: usize = 5;
     let mut number_of_pages: usize = 1;
@@ -105,8 +107,11 @@ async fn main() {
                 .alignment(Alignment::center()),
         );
 
+    let elapsed_duration = t1.elapsed();
+
     println!("{table}");
     println!("(c) Peter Sideris 2024");
+    println!("Elapsed time: {:?}", elapsed_duration);
 }
 
 fn create_link(x: String, y: String) -> String {
