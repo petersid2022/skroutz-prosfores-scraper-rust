@@ -96,7 +96,13 @@ async fn main() {
 
     let client = reqwest::Client::new();
     let data = scrape(&client, number_of_items, number_of_pages).await;
-    let mut table = Table::new(data.unwrap());
+    let mut table = match data {
+        Ok(data) => Table::new(data),
+        Err(err) => {
+            eprintln!("error: {}", err);
+            return;
+        }
+    };
 
     table
         .with(Style::modern())
