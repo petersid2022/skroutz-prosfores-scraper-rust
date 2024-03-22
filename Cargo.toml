@@ -2,6 +2,7 @@
 name = "skroutz-prosfores-scraper-rust"
 version = "0.1.0"
 edition = "2021"
+description = "A simple scraper for any skroutz.gr deals"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,3 +13,4 @@ scraper = "0.18.1"
 anyhow = "1.0.80"
 tabled = { version = "*", features = ["ansi"] }
 rand = "0.8.5"
+clap = { version = "4.5.1", features = ["derive"] }
